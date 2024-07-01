@@ -53,6 +53,12 @@
 		#include "LuaAudioBuffer.h"
 		#include "LuaAudioBufferPlayer.h"
 		#include "LuaAudioStreamPlayer.h"
+		#ifdef WITH_OPENAL_EXT
+			#include "LuaAudioFilter.h"
+			#include "LuaAudioEffectSlot.h"
+			#include "LuaAudioEffect.h"
+			#include "LuaAudioEffectProperties.h"
+		#endif
 	#endif
 #endif
 
@@ -60,8 +66,7 @@
 #include <cstring> // for memchr()
 #include "IFile.h"
 
-#include <ncine/config.h>
-#if NCINE_WITH_ALLOCATORS
+#ifdef WITH_ALLOCATORS
 	#include <nctl/AllocManager.h>
 	#include <nctl/IAllocator.h>
 #endif
@@ -126,7 +131,7 @@ LuaStateManager::LuaStateManager(ApiType apiType, StatisticsTracking statsTracki
 
 LuaStateManager::LuaStateManager(lua_State *L, ApiType apiType, StatisticsTracking statsTracking, StandardLibraries stdLibraries)
     : L_(L), apiType_(apiType), statsTracking_(statsTracking), stdLibraries_(stdLibraries),
-      trackedUserDatas_(apiType == ApiType::FULL ? 32 : 1), untrackedUserDatas_(32), closeOnDestruction_(false)
+      trackedUserDatas_(apiType == ApiType::FULL ? 32 : 2), untrackedUserDatas_(32), closeOnDestruction_(false)
 {
 	ASSERT(L_);
 
@@ -339,7 +344,7 @@ void *LuaStateManager::luaAllocator(void *ud, void *ptr, size_t osize, size_t ns
 {
 	if (nsize == 0)
 	{
-#if !NCINE_WITH_ALLOCATORS
+#if !defined(WITH_ALLOCATORS)
 		free(ptr);
 #else
 		nctl::theLuaAllocator().deallocate(ptr);
@@ -348,7 +353,7 @@ void *LuaStateManager::luaAllocator(void *ud, void *ptr, size_t osize, size_t ns
 	}
 	else
 	{
-#if !NCINE_WITH_ALLOCATORS
+#if !defined(WITH_ALLOCATORS)
 		return realloc(ptr, nsize);
 #else
 		return nctl::theLuaAllocator().reallocate(ptr, nsize);
@@ -361,7 +366,7 @@ void *LuaStateManager::luaAllocatorWithStatistics(void *ud, void *ptr, size_t os
 	if (nsize == 0)
 	{
 		LuaStatistics::freeMemory(osize);
-#if !NCINE_WITH_ALLOCATORS
+#if !defined(WITH_ALLOCATORS)
 		free(ptr);
 #else
 		nctl::theLuaAllocator().deallocate(ptr);
@@ -371,7 +376,7 @@ void *LuaStateManager::luaAllocatorWithStatistics(void *ud, void *ptr, size_t os
 	else
 	{
 		LuaStatistics::allocMemory(ptr != nullptr ? (nsize - osize) : nsize);
-#if !NCINE_WITH_ALLOCATORS
+#if !defined(WITH_ALLOCATORS)
 		return realloc(ptr, nsize);
 #else
 		return nctl::theLuaAllocator().reallocate(ptr, nsize);
@@ -473,6 +478,7 @@ void LuaStateManager::releaseTrackedMemory()
 				LuaShaderState::release(object);
 				break;
 			}
+
 			case LuaTypes::TEXTURE:
 			{
 				LuaTexture::release(object);
@@ -508,6 +514,7 @@ void LuaStateManager::releaseTrackedMemory()
 				LuaTextNode::release(object);
 				break;
 			}
+
 	#ifdef WITH_AUDIO
 			case LuaTypes::AUDIOBUFFER:
 			{
@@ -524,7 +531,30 @@ void LuaStateManager::releaseTrackedMemory()
 				LuaAudioStreamPlayer::release(object);
 				break;
 			}
+		#ifdef WITH_OPENAL_EXT
+			case LuaTypes::AUDIO_FILTER:
+			{
+				LuaAudioFilter::release(object);
+				break;
+			}
+			case LuaTypes::AUDIO_EFFECT_SLOT:
+			{
+				LuaAudioEffectSlot::release(object);
+				break;
+			}
+			case LuaTypes::AUDIO_EFFECT:
+			{
+				LuaAudioEffect::release(object);
+				break;
+			}
+			case LuaTypes::AUDIO_EFFECT_PROPERTIES:
+			{
+				LuaAudioEffectProperties::release(object);
+				break;
+			}
+		#endif
 	#endif
+
 			case LuaTypes::PARTICLE_SYSTEM:
 			{
 				LuaParticleSystem::release(object);
@@ -609,6 +639,12 @@ void LuaStateManager::exposeApi()
 		LuaAudioBuffer::expose(this);
 		LuaAudioBufferPlayer::expose(this);
 		LuaAudioStreamPlayer::expose(this);
+		#ifdef WITH_OPENAL_EXT
+		LuaAudioFilter::expose(this);
+		LuaAudioEffectSlot::expose(this);
+		LuaAudioEffect::expose(this);
+		LuaAudioEffectProperties::expose(this);
+		#endif
 	}
 	#endif
 #endif
@@ -640,8 +676,15 @@ void LuaStateManager::exposeConstants()
 		LuaMeshSprite::exposeConstants(L_);
 		LuaFont::exposeConstants(L_);
 		LuaTextNode::exposeConstants(L_);
-		LuaParticleAffector::exposeConstants(L_);
 	}
+	#ifdef WITH_OPENAL_EXT
+	if (appCfg.withAudio)
+	{
+		LuaAudioFilter::exposeConstants(L_);
+		LuaAudioEffect::exposeConstants(L_);
+		LuaAudioEffectProperties::exposeConstants(L_);
+	}
+	#endif
 #endif
 
 #ifdef WITH_GIT_VERSION
